@@ -1,8 +1,9 @@
-#include "ShmClient.h"
+#include "consumer.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
+#include <iostream>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -12,6 +13,7 @@
 #include <errno.h>
 #include <linux/futex.h>
 #include <sys/eventfd.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -20,6 +22,12 @@
 //#include <gperftools/profiler.h>
 #include <sys/select.h>
 
+using namespace std;
+#define errExit(msg)    \
+		do {                  \
+				perror(msg);        \
+				exit(EXIT_FAILURE); \
+		} while (0)
 struct CreateQueueResponse {
   size_t size;
 };
@@ -28,7 +36,7 @@ ShmClient::ShmClient(const std::string &sock_path, size_t size) : size_(size){
     struct sockaddr_un addr;
     int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        return NULL;
+        return ;
     }
 
     memset(&addr, 0, sizeof(addr));
@@ -66,25 +74,25 @@ ShmClient::ShmClient(const std::string &sock_path, size_t size) : size_(size){
 }
 
 void ShmClient::Connect() {
-    int epollfd = epoll_create(0);
+	printf("Connect, can_consumer_fd is %d\n", can_consume_fd_);
+    int epollfd = epoll_create(1024);
     if (epollfd == -1) abort();
     struct epoll_event evnt = {0};
-    evnt.data.fd = eventfd;
+    evnt.data.fd = can_consume_fd_;
     evnt.events = EPOLLIN | EPOLLET;
-    if (epoll_ctl(can_consume_fd_, EPOLL_CTL_ADD, eventfd, &evnt) == -1)
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD,can_consume_fd_, &evnt) == -1)
         abort();
     static const int EVENTS = 20;
     struct epoll_event evnts[EVENTS];
     while (1)
     {
-        int count = epoll_wait(epollfd, evnts, EVENTS, -1);
-        printf("%d\n", count);
+        int count = epoll_wait(epollfd, evnts, EVENTS, 5000);
         if (count == -1)
         {
             if (errno != EINTR)
             {
                 perror("epoll_wait");
-                return NULL;
+                return;
             }
         }
 
@@ -92,13 +100,19 @@ void ShmClient::Connect() {
         for (i = 0; i < count; ++i)
         {
             struct epoll_event *e = evnts + i;
-            if (e->data.fd == eventfd)
+            if (e->data.fd == can_consume_fd_)
             {
                 eventfd_t val;
-                eventfd_read(eventfd, &val);
+                eventfd_read(can_consume_fd_, &val);
                 printf("DING: %lld\n", (long long)val);
-                return NULL;
             }
         }
     }
+}
+
+int main() {
+	ShmClient client("/tmp/test.socket", 10);
+	usleep(1000);
+	client.Connect();
+	return 0;
 }

@@ -1,13 +1,13 @@
-all:ShmClient ShmServer
+all:consumer producer
 
-CPPFLAGS+=-std=c++1 -Wall -pedantic
+CPPFLAGS+=-std=c++11 -Wall -pedantic
 CPPFLAGS+=-g -O0
 LDFLAGS+=-lboost_system -lrt -lpthread
 
 %:%.cpp
-    $(CXX) $(CPPFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(CPPFLAGS) $^ -o $@ $(LDFLAGS)
 
 .PHONY: clean
 clean:
-    rm ShmClient
-    rm ShmServer
+	rm consumer
+	rm producer

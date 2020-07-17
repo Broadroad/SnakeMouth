@@ -18,7 +18,10 @@
 #include <sys/wait.h>
 //#include <gperftools/profiler.h>
 #include <sys/select.h>
-#include "ShmServer.h"
+#include "producer.h"
+#include <sys/time.h>
+#include <time.h>
+
 
 #define errExit(msg)    \
   do {                  \
@@ -26,13 +29,32 @@
     exit(EXIT_FAILURE); \
   } while (0)
 
-ShmQueue::ShmQueue(int fd, int can_consume_fd, int can_produce_fd, size_t size) {
-    
-}
 struct CreateQueueResponse {
   size_t size;
 };
 
+bool set_blocking(int fd, bool blocking)
+{
+		if (fd < 0) return false;
+		int flags = fcntl(fd, F_GETFL, 0);
+		if (flags == -1) return false;
+		flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+		return (fcntl(fd, F_SETFL, flags) == 0) ? true : false;
+}
+
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result)
+{
+	if ((stop->tv_nsec - start->tv_nsec) < 0) {
+		result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+		result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+	} else {
+		result->tv_sec = stop->tv_sec - start->tv_sec;
+		result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+	}
+
+	return;
+}
 bool fd_wait_read(int fd, struct timespec *ts) {
     struct timespec start, end, intval, realint;
     struct timeval tv, *ptv = &tv;
@@ -119,15 +141,22 @@ void ShmServer::Accept(struct timespec *ts) {
     if (sendmsg(client_fd, &msg, 0) < 0) {
         perror("sendmsg");
     }
+	printf("send msg success, can_consumer_fd_ is %d\n", can_consume_fd_);
     free(cmptr);
     close(client_fd);
 }
 
-void Shm::Start() {
-    for (int i = 0; i < size_; i++) {
+void ShmServer::Start() {
+    for (int i = 1; i < size_; i++) {
         int64_t cnt = i;
+		printf("write %d\n", cnt);
         write(can_consume_fd_, &cnt, sizeof(cnt));
+		usleep(10000);
     }
-    usleep(100000);
 }
 
+int main() {
+	ShmServer server("/tmp/test.socket", 10);
+	server.Accept();
+	server.Start();
+}

@@ -1,5 +1,6 @@
 #ifndef SHM_CLIENT_H
 #define SHM_CLIENT_H
+#include <string>
 
 class ShmClient {
 public:
